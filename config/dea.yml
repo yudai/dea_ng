@@ -22,6 +22,10 @@ nats_uri: nats://localhost:4222/
 
 pid_filename: /tmp/dea_ng.pid
 
+runtimes:
+  - ruby18
+  - ruby19
+
 warden_socket: /tmp/warden.sock
 
 evacuation_delay_secs: 5

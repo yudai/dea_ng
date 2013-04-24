@@ -87,6 +87,18 @@ module Dea
       end
     end
 
+    class RuntimeNotFoundError < BaseError
+      attr_reader :data
+
+      def initialize(runtime)
+        @data = { :runtime_name => runtime }
+      end
+
+      def message
+        "Runtime not found: #{data[:runtime_name].inspect}"
+      end
+    end
+
     class TransitionError < BaseError
       attr_reader :from
       attr_reader :to
@@ -121,6 +133,10 @@ module Dea
 
       attributes["droplet_sha1"]        ||= attributes.delete("sha1")
       attributes["droplet_uri"]         ||= attributes.delete("executableUri")
+
+      attributes["runtime_name"]        ||= attributes.delete("runtime")
+      attributes["runtime_info"]        ||= attributes.delete("runtime_info")
+      attributes["framework_name"]      ||= attributes.delete("framework")
 
       # Translate environment to dictionary (it is passed as Array with VAR=VAL)
       env = attributes.delete("env") || []
@@ -183,9 +199,9 @@ module Dea
           "droplet_sha1"        => String,
           "droplet_uri"         => String,
 
-          optional("runtime_name")   => String,
-          optional("runtime_info")   => dict(String, any),
-          optional("framework_name") => String,
+          "runtime_name"        => String,
+          "runtime_info"        => dict(String, any),
+          "framework_name"      => String,
 
           # TODO: use proper schema
           "limits"              => limits_schema,
@@ -281,6 +297,10 @@ module Dea
       false
     end
 
+    def runtime
+      bootstrap.runtime(self.runtime_name, self.runtime_info)
+    end
+
     def memory_limit_in_bytes
       # Adds a little bit of headroom (inherited from DEA v1)
       ((limits["mem"].to_i * 1024 * 9) / 8) * 1024
@@ -314,11 +334,18 @@ module Dea
     end
 
     def paths_to_bind
-      [droplet.droplet_dirname]
+      [droplet.droplet_dirname, runtime.dirname]
     end
 
     def validate
       self.class.schema.validate(@attributes)
+
+      # Check if the runtime is available
+      if runtime.nil?
+        error = RuntimeNotFoundError.new(self.runtime_name)
+        logger.warn(error.message, error.data)
+        raise error
+      end
     end
 
     def state
@@ -426,6 +453,16 @@ module Dea
       end
     end
 
+    def promise_prepare_start_script
+      Promise.new do |p|
+        script = "sed -i 's@%VCAP_LOCAL_RUNTIME%@#{runtime.executable}@g' startup"
+
+        promise_warden_run(:app, script).resolve
+
+        p.deliver
+      end
+    end
+
     def promise_start
       Promise.new do |p|
         script = []
@@ -512,6 +549,7 @@ module Dea
         [
           promise_setup_network,
           promise_extract_droplet,
+          promise_prepare_start_script,
           promise_exec_hook_script('before_start'),
           promise_start
         ].each(&:resolve)

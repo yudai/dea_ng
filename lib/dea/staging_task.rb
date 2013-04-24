@@ -427,6 +427,14 @@ module Dea
       promise_destroy.resolve
     end
 
+    def runtime
+      bootstrap.runtime(attributes["properties"]["runtime"], attributes["properties"]["runtime_info"])
+    end
+
+    def clean_workspace
+      FileUtils.rm_rf(workspace_dir)
+    end
+
     def paths_to_bind
       [workspace.workspace_dir, buildpack_dir]
     end

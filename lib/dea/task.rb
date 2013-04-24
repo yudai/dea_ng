@@ -129,6 +129,7 @@ module Dea
 
     def promise_create_container
       Promise.new do |p|
+        # Droplet and runtime
         bind_mounts = paths_to_bind.map do |path|
           bind_mount = ::Warden::Protocol::CreateRequest::BindMount.new
           bind_mount.src_path = path
